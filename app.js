@@ -1,4 +1,4 @@
-// app.js - A.R.G.O.S. Motor Lógico Local (PWA)
+// app.js - A.R.G.O.S. Motor Lógico Local (PWA) Completo
 'use strict';
 
 // ============================================================================
@@ -16,15 +16,12 @@ function initDB() {
             const database = event.target.result;
             console.log('[Obi-Wan] Forjando la base de datos local...');
             
-            // Tabla de Configuración (Claves API, Nombre)
             if (!database.objectStoreNames.contains('config')) {
                 database.createObjectStore('config', { keyPath: 'id' });
             }
-            // Tabla de Bitácora (Entrenamientos y Sensaciones)
             if (!database.objectStoreNames.contains('bitacora')) {
                 database.createObjectStore('bitacora', { keyPath: 'fecha' });
             }
-            // Tabla de Fotografías y Nutrición
             if (!database.objectStoreNames.contains('comidas')) {
                 database.createObjectStore('comidas', { keyPath: 'timestamp' });
             }
@@ -43,7 +40,6 @@ function initDB() {
     });
 }
 
-// Funciones de ayuda táctica para leer/escribir en IndexedDB
 const DB = {
     async put(storeName, data) {
         return new Promise((resolve, reject) => {
@@ -112,7 +108,6 @@ async function guardarConfiguracion() {
             btn.style.background = '#ff8800';
         }, 2000);
         
-        // Refrescar datos tras guardar claves
         iniciarTelemetria();
     } catch (error) {
         btn.textContent = '❌ ERROR AL GUARDAR';
@@ -121,9 +116,8 @@ async function guardarConfiguracion() {
 }
 
 // ============================================================================
-// 3. COMUNICACIONES Y CÁLCULO FISIOLÓGICO
+// 3. COMUNICACIONES Y CÁLCULO FISIOLÓGICO (Intervals.icu)
 // ============================================================================
-
 async function fetchIntervalsData() {
     const config = await DB.get('config', 'credenciales');
     if (!config || !config.athleteId || !config.intervalsKey) {
@@ -133,7 +127,6 @@ async function fetchIntervalsData() {
     const token = btoa('API_KEY:' + config.intervalsKey);
     const headers = { 'Authorization': `Basic ${token}` };
     
-    // Rango táctico: Últimos 14 días para una imagen clara
     const hoy = new Date();
     const hace14Dias = new Date();
     hace14Dias.setDate(hoy.getDate() - 14);
@@ -185,12 +178,11 @@ function procesarYDibujarMetricas(datos) {
     document.getElementById('val-intensidad').innerHTML = '<span style="color:#56d364">ESTADO ACTUALIZADO ✓</span>';
 
     // 3. Preparar Datos para los Gráficos (Últimos 14 días)
-    const labels = wellness.map(d => d.id.slice(5)); // DD-MM
+    const labels = wellness.map(d => d.id.slice(5)); 
     const dataHRV = wellness.map(d => d.hrv || null);
     const dataRHR = wellness.map(d => d.restingHR || null);
     const dataFitness = wellness.map(d => d.ctl || null);
     
-    // Agrupar carga de actividades por día
     const mapaCarga = {};
     activities.forEach(act => {
         const fecha = act.start_date_local.split('T')[0];
@@ -237,7 +229,92 @@ function procesarYDibujarMetricas(datos) {
 }
 
 // ============================================================================
-// 4. RUTINAS DE INICIO Y BINDING DE UI
+// 4. INTELIGENCIA ARTIFICIAL (Gemini API Local)
+// ============================================================================
+async function llamarGemini(prompt) {
+    const config = await DB.get('config', 'credenciales');
+    if (!config || !config.geminiKey) throw new Error('Falta la clave API de Gemini en Configuración.');
+    
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${config.geminiKey}`;
+    
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    });
+
+    if (!res.ok) throw new Error(`Error API Gemini: ${res.status}`);
+    const json = await res.json();
+    return json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+}
+
+function extraerEtiqueta(texto, tag) {
+    const ETIQUETAS = 'RESUMEN_CORTO|ANALISIS_RETROSPECTIVO|ANALISIS_PRESCRIPCION|CALENTAMIENTO|PRINCIPAL|ENFRIAMIENTO|TIPO_DIETA|MACRO_CARBOS|MACRO_PROTES|MACRO_GRASAS|CONSEJO_NUTRICIONAL';
+    const re = new RegExp(`\\[${tag}\\]([\\s\\S]*?)(?=\\[(?:${ETIQUETAS})\\]|$)`);
+    const match = texto.match(re);
+    return match ? match[1].trim() : '---';
+}
+
+async function solicitarEntrenamientoIA() {
+    const btn = document.getElementById('btn-generar-ia');
+    const containerSesion = document.getElementById('contenedor-sesion-prescrita');
+    const containerAnalisis = document.getElementById('contenedor-analisis-ia');
+    
+    if (btn) btn.style.display = 'none';
+    containerAnalisis.innerHTML = '<p style="color:#ff8800; font-family:\'Consolas\', monospace;">Conectando con A.R.G.O.S. IA... Calculando matrices.</p>';
+    
+    try {
+        const config = await DB.get('config', 'credenciales');
+        const nombreAtleta = config?.nombre || 'Atleta';
+        
+        const lesiones = document.getElementById('texto-lesiones').value || 'Ninguna lesión activa.';
+        const hrvActual = document.getElementById('ticker-hrv').textContent;
+        const formActual = document.getElementById('val-fatiga').innerText; // TSB
+
+        const prompt = `Eres A.R.G.O.S., inteligencia artificial deportiva para ${nombreAtleta}. Tu tono es profesional y científico.
+        
+        === ESTADO MÉDICO Y LESIONES ===
+        "${lesiones}" (EVITA prescribir ejercicios que impacten zonas lesionadas).
+        
+        === SITUACIÓN FISIOLÓGICA HOY ===
+        HRV: ${hrvActual}
+        Fatiga: ${formActual}
+        
+        Diseña la sesión de hoy integrada en la periodización.
+        Estructura exactamente con estas etiquetas:
+        [RESUMEN_CORTO] -> Resumen en 10 palabras.
+        [ANALISIS_PRESCRIPCION] -> Explicación técnica de la sesión.
+        [CALENTAMIENTO] -> Activación.
+        [PRINCIPAL] -> Núcleo de la sesión.
+        [ENFRIAMIENTO] -> Vuelta a la calma.
+        [CONSEJO_NUTRICIONAL] -> Pautas para afrontar el día.`;
+
+        const respuestaIA = await llamarGemini(prompt);
+
+        const analisis = extraerEtiqueta(respuestaIA, 'ANALISIS_PRESCRIPCION');
+        const calentamiento = extraerEtiqueta(respuestaIA, 'CALENTAMIENTO');
+        const principal = extraerEtiqueta(respuestaIA, 'PRINCIPAL');
+        const enfriamiento = extraerEtiqueta(respuestaIA, 'ENFRIAMIENTO');
+        const nutricion = extraerEtiqueta(respuestaIA, 'CONSEJO_NUTRICIONAL');
+
+        containerAnalisis.innerHTML = `<p>${analisis}</p>`;
+        
+        containerSesion.innerHTML = `
+            <div class="seccion-ruta"><div class="tag-ruta">Calentamiento</div>${calentamiento}</div>
+            <div class="seccion-ruta"><div class="tag-ruta">Principal</div>${principal}</div>
+            <div class="seccion-ruta"><div class="tag-ruta">Enfriamiento</div>${enfriamiento}</div>
+        `;
+
+        document.getElementById('val-nutricion-consejo').textContent = nutricion;
+
+    } catch (error) {
+        containerAnalisis.innerHTML = `<p style="color:#ff2a2a;">Fallo en el núcleo IA: ${error.message}</p>`;
+        if (btn) btn.style.display = 'block';
+    }
+}
+
+// ============================================================================
+// 5. RUTINAS DE INICIO Y BINDING DE UI
 // ============================================================================
 async function iniciarTelemetria() {
     try {
@@ -261,7 +338,6 @@ async function iniciarTelemetria() {
     }
 }
 
-// Evento principal
 document.addEventListener('DOMContentLoaded', async () => {
     const hoy = new Date().toISOString().split('T')[0];
     document.getElementById('header-fecha').textContent = hoy;
@@ -270,30 +346,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         await initDB();
         await cargarConfiguracion();
         document.getElementById('btn-guardar-config').addEventListener('click', guardarConfiguracion);
+        
+        // Iniciar telemetría
         await iniciarTelemetria();
+
+        // Inyectar botón de Inteligencia Artificial si hay conexión
+        const config = await DB.get('config', 'credenciales');
+        if (config && config.geminiKey) {
+            document.getElementById('contenedor-sesion-prescrita').innerHTML = `
+                <button id="btn-generar-ia" class="file-upload-btn" style="width:100%; padding:15px; margin-top:10px; font-size:14px; background:var(--primary); color:#fff;">
+                    ⚡ SOLICITAR ENTRENAMIENTO DE HOY
+                </button>
+            `;
+            document.getElementById('btn-generar-ia').addEventListener('click', solicitarEntrenamientoIA);
+            document.getElementById('contenedor-analisis-ia').innerHTML = '<p style="color:#888; font-style:italic;">Sistema IA en reposo. Esperando solicitud manual.</p>';
+        }
+
     } catch (e) {
         alert("Fallo crítico en el sistema de almacenamiento. Comprueba los permisos de tu navegador.");
-    }
-});
-
-// Evento principal: Cuando la página carga
-document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Poner fecha de hoy en la cabecera
-    const hoy = new Date().toISOString().split('T')[0];
-    document.getElementById('header-fecha').textContent = hoy;
-
-    // 2. Levantar los escudos de la Base de Datos
-    try {
-        await initDB();
-        await cargarConfiguracion();
-        
-        // Bindings de botones
-        document.getElementById('btn-guardar-config').addEventListener('click', guardarConfiguracion);
-        
-        // 3. Iniciar secuencia de conexión
-        await iniciarTelemetria();
-        
-    } catch (e) {
-        alert("Fallo crítico en el sistema de almacenamiento del navegador. Asegúrate de no estar en modo incógnito estricto.");
     }
 });
