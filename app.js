@@ -1,4 +1,4 @@
-// app.js - A.R.G.O.S. Motor Lógico Local (PWA) Final
+// app.js - A.R.G.O.S. Motor Lógico Local (PWA) Final - Versión Completa
 'use strict';
 
 // ============================================================================
@@ -11,16 +11,12 @@ let db;
 function initDB() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
-
         request.onupgradeneeded = (event) => {
             const database = event.target.result;
-            console.log('[Obi-Wan] Forjando la base de datos local...');
-            
             if (!database.objectStoreNames.contains('config')) database.createObjectStore('config', { keyPath: 'id' });
             if (!database.objectStoreNames.contains('bitacora')) database.createObjectStore('bitacora', { keyPath: 'fecha' });
             if (!database.objectStoreNames.contains('comidas')) database.createObjectStore('comidas', { keyPath: 'timestamp' });
         };
-
         request.onsuccess = (event) => { db = event.target.result; resolve(db); };
         request.onerror = (event) => { reject(event.target.error); };
     });
@@ -47,18 +43,11 @@ const DB = {
             req.onsuccess = () => resolve(req.result);
             req.onerror = (e) => reject(e.target.error);
         });
-    },
-    async clear(storeName) {
-        return new Promise((resolve, reject) => {
-            const req = db.transaction([storeName], 'readwrite').objectStore(storeName).clear();
-            req.onsuccess = () => resolve();
-            req.onerror = (e) => reject(e.target.error);
-        });
     }
 };
 
 // ============================================================================
-// 2. CONFIGURACIÓN Y COPIAS DE SEGURIDAD (Soporte Vital)
+// 2. CONFIGURACIÓN Y COPIAS DE SEGURIDAD
 // ============================================================================
 async function cargarConfiguracion() {
     const config = await DB.get('config', 'credenciales');
@@ -67,8 +56,9 @@ async function cargarConfiguracion() {
         document.getElementById('cfg-intervals-key').value = config.intervalsKey || '';
         document.getElementById('cfg-gemini-key').value = config.geminiKey || '';
         document.getElementById('cfg-nombre-atleta').value = config.nombre || 'Atleta';
+        document.getElementById('cfg-meta-principal').value = config.meta || 'Preparación base.';
         document.getElementById('header-atleta').textContent = config.nombre || 'Atleta';
-        
+        document.getElementById('objetivo-actual').textContent = config.meta || 'Preparación base.';
         document.getElementById('texto-lesiones').value = config.lesiones || '';
     }
 }
@@ -80,24 +70,21 @@ async function guardarConfiguracion() {
         intervalsKey: document.getElementById('cfg-intervals-key').value.trim(),
         geminiKey: document.getElementById('cfg-gemini-key').value.trim(),
         nombre: document.getElementById('cfg-nombre-atleta').value.trim(),
+        meta: document.getElementById('cfg-meta-principal').value.trim(),
         lesiones: document.getElementById('texto-lesiones').value.trim()
     };
     await DB.put('config', configData);
     document.getElementById('header-atleta').textContent = configData.nombre;
+    document.getElementById('objetivo-actual').textContent = configData.meta;
     alert('Configuración guardada en el dispositivo.');
     location.reload();
 }
 
 async function exportarRespaldo() {
-    const data = {
-        config: await DB.getAll('config'),
-        bitacora: await DB.getAll('bitacora'),
-        comidas: await DB.getAll('comidas')
-    };
+    const data = { config: await DB.getAll('config'), bitacora: await DB.getAll('bitacora'), comidas: await DB.getAll('comidas') };
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
+    a.href = URL.createObjectURL(blob);
     a.download = `argos_backup_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
 }
@@ -114,26 +101,21 @@ async function importarRespaldo(event) {
             if (data.comidas) for (const item of data.comidas) await DB.put('comidas', item);
             alert('Copia de seguridad restaurada con éxito.');
             location.reload();
-        } catch (err) {
-            alert('Error al leer el archivo de respaldo.');
-        }
+        } catch (err) { alert('Error al leer el archivo de respaldo.'); }
     };
     reader.readAsText(file);
 }
 
 // ============================================================================
-// 3. TELEMETRÍA (Intervals.icu), GRÁFICOS Y BITÁCORA MÉDICA
+// 3. TELEMETRÍA (Intervals), MULTIDEPORTE Y GRÁFICOS
 // ============================================================================
-let globalActivities = [];
-
 async function fetchIntervalsData() {
     const config = await DB.get('config', 'credenciales');
     if (!config || !config.athleteId || !config.intervalsKey) throw new Error('Faltan credenciales de Intervals.');
     const token = btoa('API_KEY:' + config.intervalsKey);
     const headers = { 'Authorization': `Basic ${token}` };
     
-    const hoy = new Date();
-    const hace14Dias = new Date(); hace14Dias.setDate(hoy.getDate() - 14);
+    const hoy = new Date(); const hace14Dias = new Date(); hace14Dias.setDate(hoy.getDate() - 14);
     const strHoy = hoy.toISOString().split('T')[0];
     const strInicio = hace14Dias.toISOString().split('T')[0];
 
@@ -149,19 +131,16 @@ function procesarYDibujarMetricas(datos) {
     const { wellness, activities } = datos;
     if (!wellness || wellness.length === 0) return;
 
+    // --- 1. ZONAS DE FATIGA Y UI PRINCIPAL ---
     const ultimoRegistro = wellness[wellness.length - 1];
-    const latestCTL = Math.round(ultimoRegistro.ctl || 0);
-    const latestATL = Math.round(ultimoRegistro.atl || 0);
-    const latestForm = latestCTL - latestATL; // TSB
+    const latestForm = Math.round((ultimoRegistro.ctl || 0) - (ultimoRegistro.atl || 0));
 
-    // 1. Zonas de Fatiga
     let zonaFatiga = "Mantenimiento"; let colorFatiga = "#8b949e";
     if (latestForm > 5) { zonaFatiga = "FRESCO"; colorFatiga = "#79c0ff"; }
     else if (latestForm >= -10 && latestForm <= 5) { zonaFatiga = "MANTENIMIENTO"; colorFatiga = "#ff2a2a"; }
     else if (latestForm >= -30 && latestForm < -10) { zonaFatiga = "ESTÍMULO"; colorFatiga = "#56d364"; }
     else if (latestForm < -30) { zonaFatiga = "SOBREENTRENAMIENTO"; colorFatiga = "#ff2a2a"; }
 
-    // 2. Actualizar Interfaz
     document.getElementById('val-fatiga').innerHTML = `<span style="color:${colorFatiga}">${zonaFatiga}<br><small style="color:#666; font-family:'Consolas',monospace;">TSB: ${latestForm}</small></span>`;
     document.getElementById('ticker-hrv').textContent = ultimoRegistro.hrv ? Math.round(ultimoRegistro.hrv) : '--';
     document.getElementById('ticker-rhr').textContent = ultimoRegistro.restingHR ? Math.round(ultimoRegistro.restingHR) : '--';
@@ -169,49 +148,81 @@ function procesarYDibujarMetricas(datos) {
     document.getElementById('card-rhr-val').textContent = (ultimoRegistro.restingHR ? Math.round(ultimoRegistro.restingHR) : '--') + ' bpm';
     document.getElementById('val-intensidad').innerHTML = '<span style="color:#56d364">ACTUALIZADO ✓</span>';
 
-    // 3. Preparar Datos para Gráficos
-    const labels = wellness.map(d => d.id.slice(5)); 
-    const dataHRV = wellness.map(d => d.hrv || null);
-    const dataRHR = wellness.map(d => d.restingHR || null);
-    const dataFitness = wellness.map(d => d.ctl || null);
+    // --- 2. CÁLCULO RADAR MULTIDEPORTE Y CALORÍAS ---
+    const hoyDate = new Date();
+    const strLunesActual = new Date(hoyDate.setDate(hoyDate.getDate() - ((hoyDate.getDay() + 6) % 7))).toISOString().split('T')[0];
     
+    const initWeek = () => ({ runKm:0, runSecs:0, rideKm:0, rideSecs:0, swimKm:0, swimSecs:0, strSecs:0, carga:0, kcal:0 });
+    const wAnterior = initWeek(), wActual = initWeek();
+    let totalKcalActivas = 0, diasConActividad = 0;
     const mapaCarga = {};
+
     activities.forEach(act => {
         const fecha = act.start_date_local.split('T')[0];
-        mapaCarga[fecha] = (mapaCarga[fecha] || 0) + (act.icu_training_load || 0);
-    });
-    const dataCarga = wellness.map(d => mapaCarga[d.id] || 0);
+        const target = (fecha >= strLunesActual) ? wActual : wAnterior;
+        
+        const carga = act.icu_training_load || 0;
+        const kcal = act.calories || 0;
+        const dist = (typeof act.distance === 'number' ? act.distance : 0) / 1000;
+        const secs = typeof act.moving_time === 'number' ? act.moving_time : 0;
+        const tipo = act.type || '';
 
-    // 4. Dibujar Gráficos (Chart.js)
+        target.carga += Math.round(carga);
+        target.kcal += Math.round(kcal);
+        if(kcal > 0) { totalKcalActivas += kcal; diasConActividad++; }
+        mapaCarga[fecha] = (mapaCarga[fecha] || 0) + carga;
+
+        if (['Run', 'VirtualRun', 'Treadmill', 'TrailRun'].includes(tipo)) { target.runKm += dist; target.runSecs += secs; }
+        else if (['Ride', 'VirtualRide', 'IndoorCycling', 'GravelRide', 'MountainBikeRide'].includes(tipo)) { target.rideKm += dist; target.rideSecs += secs; }
+        else if (['Swim', 'OpenWaterSwim'].includes(tipo)) { target.swimKm += dist; target.swimSecs += secs; }
+        else if (['WeightTraining', 'Workout', 'Strength', 'Crossfit'].includes(tipo)) target.strSecs += secs;
+    });
+
+    // Guardar gasto promedio global para el motor de nutrición
+    window.avgCaloriasActivas = diasConActividad > 0 ? Math.round(totalKcalActivas / diasConActividad) : 500;
+    document.getElementById('val-gasto-promedio').textContent = window.avgCaloriasActivas + " kcal";
+
+    const formatTime = (secs) => { const h=Math.floor(secs/3600), m=Math.floor((secs%3600)/60); return h===0 ? (m===0 ? '0m' : `${m}m`) : `${h}h${m.toString().padStart(2,'0')}m`; };
+    const boxSem = (tit, w, isAct) => `
+        <div class="box-summary box-multisport" style="border-left-color: ${isAct ? 'var(--primary)' : '#555'};">
+            <div class="multisport-title" style="color: ${isAct ? 'var(--primary)' : '#888'};">${tit}</div>
+            <div class="multisport-row"><span class="ms-label">🏃 Carrera:</span> <span class="ms-val">${formatTime(w.runSecs)} | ${w.runKm.toFixed(1)}km</span></div>
+            <div class="multisport-row"><span class="ms-label">🚴 Ciclismo:</span> <span class="ms-val">${formatTime(w.rideSecs)} | ${w.rideKm.toFixed(1)}km</span></div>
+            <div class="multisport-row"><span class="ms-label">🏊 Natación:</span> <span class="ms-val">${formatTime(w.swimSecs)} | ${w.swimKm.toFixed(1)}km</span></div>
+            <div class="multisport-row"><span class="ms-label">🏋️ Fuerza:</span> <span class="ms-val">${formatTime(w.strSecs)}</span></div>
+            <div class="multisport-row" style="margin-top:6px; border-top:1px solid #222; padding-top:6px;"><span class="ms-label" style="color:#ff8800;">🔥 Kcal Act.:</span> <span class="ms-val" style="color:#ff8800;">${w.kcal}</span></div>
+            <div class="multisport-row"><span class="ms-label" style="color:var(--primary);">📈 Carga:</span> <span class="ms-val" style="color:var(--primary);">${w.carga}</span></div>
+        </div>`;
+    document.getElementById('container-sem-anterior').innerHTML = boxSem('Semana Anterior', wAnterior, false);
+    document.getElementById('container-sem-actual').innerHTML = boxSem('Semana Actual', wActual, true);
+
+    // --- 3. DIBUJAR GRÁFICOS ---
+    const labels = wellness.map(d => d.id.slice(5)); 
     Chart.defaults.color = '#666'; Chart.defaults.borderColor = '#1a1a1a'; Chart.defaults.font.family = "'Consolas', monospace"; 
-    
-    // Destruir gráficos anteriores si existen
-    if(window.graficoFisio) window.graficoFisio.destroy();
-    if(window.graficoCarga) window.graficoCarga.destroy();
+    if(window.graficoFisio) window.graficoFisio.destroy(); if(window.graficoCarga) window.graficoCarga.destroy();
 
     window.graficoFisio = new Chart(document.getElementById('canvasFisiologia').getContext('2d'), { 
         type: 'line', 
         data: { labels: labels, datasets: [
-            { label: 'HRV', data: dataHRV, borderColor: '#555', backgroundColor: 'rgba(85,85,85,0.1)', fill: true, tension: 0.1 }, 
-            { label: 'RHR', data: dataRHR, borderColor: 'var(--primary)', backgroundColor: 'rgba(255,42,42,0.1)', fill: true, tension: 0.1 }
-        ]}, 
-        options: { responsive: true, maintainAspectRatio: false } 
+            { label: 'HRV', data: wellness.map(d => d.hrv || null), borderColor: '#555', backgroundColor: 'rgba(85,85,85,0.1)', fill: true, tension: 0.1 }, 
+            { label: 'RHR', data: wellness.map(d => d.restingHR || null), borderColor: 'var(--primary)', backgroundColor: 'rgba(255,42,42,0.1)', fill: true, tension: 0.1 }
+        ]}, options: { responsive: true, maintainAspectRatio: false } 
     });
 
     window.graficoCarga = new Chart(document.getElementById('canvasEsfuerzo').getContext('2d'), { 
         type: 'line', 
         data: { labels: labels, datasets: [
-            { label: 'Fitness (CTL)', data: dataFitness, borderColor: '#ff8800', fill: true, tension: 0.1, yAxisID: 'y' }, 
-            { label: 'Impacto', data: dataCarga, type: 'bar', backgroundColor: 'var(--primary)', borderColor: 'var(--primary)', yAxisID: 'y1' }
-        ]}, 
-        options: { responsive: true, maintainAspectRatio: false, scales: { y: { position: 'left' }, y1: { grid: { drawOnChartArea: false }, position: 'right' } } } 
+            { label: 'Fitness (CTL)', data: wellness.map(d => d.ctl || null), borderColor: '#ff8800', fill: true, tension: 0.1, yAxisID: 'y' }, 
+            { label: 'Impacto', data: wellness.map(d => mapaCarga[d.id] || 0), type: 'bar', backgroundColor: 'var(--primary)', borderColor: 'var(--primary)', yAxisID: 'y1' }
+        ]}, options: { responsive: true, maintainAspectRatio: false, scales: { y: { position: 'left' }, y1: { grid: { drawOnChartArea: false }, position: 'right' } } } 
     });
 }
 
+// --- 4. BITÁCORA Y BARRA DE PROGRESO ---
 async function renderBitacoraYRPE(activities) {
-    globalActivities = activities;
     const bitacoraData = await DB.getAll('bitacora');
     const fechasMap = new Map();
+    let cumplidos = 0;
 
     for (let i = 0; i < 14; i++) {
         const d = new Date(); d.setDate(d.getDate() - i);
@@ -229,8 +240,14 @@ async function renderBitacoraYRPE(activities) {
             entry.rpe = b.rpe || 5; entry.dolor = b.dolor || 1;
             entry.comentario = b.comentario || ''; entry.cumplido = b.cumplido || false;
             entry.resumenIA = b.resumenIA || '';
+            if (b.cumplido) cumplidos++;
         }
     });
+
+    // Actualizar Barra de Progreso Semanal (sobre 14 días)
+    const pct = Math.min(100, Math.round((cumplidos / 14) * 100));
+    document.getElementById('val-pct-plan').textContent = `${pct}%`;
+    document.querySelector('.progress-bar-fill').style.width = `${pct}%`;
 
     let htmlGrid = '<div class="bitacora-header"><div>Día</div><div>Actividad</div><div>Prescripción</div></div>';
     let htmlRPE = '';
@@ -240,61 +257,40 @@ async function renderBitacoraYRPE(activities) {
         const checked = data.cumplido ? 'checked' : '';
         const fCorto = fecha.slice(5);
 
-        htmlGrid += `
-            <div class="bitacora-row">
-                <div class="bitacora-cell date-cell">${fCorto}</div>
-                <div class="bitacora-cell real-cell">${acts}</div>
-                <div class="bitacora-cell ia-cell">
-                    <label style="cursor:pointer; display:flex; gap:6px;"><input type="checkbox" class="check-cumplido" data-fecha="${fecha}" ${checked}><span>${data.resumenIA || 'Libre'}</span></label>
-                </div>
-            </div>`;
-
-        htmlRPE += `
-            <div class="bloque-entrenamiento sensacion-card">
-                <div class="sensacion-header"><h4 class="sensacion-titulo">${fecha}</h4><span class="sensacion-resumen">${acts}</span></div>
-                <div class="sensacion-sliders">
-                    <div>
-                        <div class="slider-row"><label class="slider-label">ESFUERZO (RPE)</label><span id="val-rpe-${fecha}" class="slider-val rpe-val">${data.rpe}/10</span></div>
-                        <input type="range" min="1" max="10" value="${data.rpe}" class="slider-sensacion" data-tipo="rpe" data-fecha="${fecha}">
-                    </div>
-                    <div>
-                        <div class="slider-row"><label class="slider-label">DOLOR</label><span id="val-dolor-${fecha}" class="slider-val dolor-val">${data.dolor}/10</span></div>
-                        <input type="range" min="1" max="10" value="${data.dolor}" class="slider-sensacion" data-tipo="dolor" data-fecha="${fecha}">
-                    </div>
-                </div>
-                <textarea class="textarea-comentario" data-fecha="${fecha}" placeholder="Notas médicas...">${data.comentario}</textarea>
-            </div>`;
+        htmlGrid += `<div class="bitacora-row"><div class="bitacora-cell date-cell">${fCorto}</div><div class="bitacora-cell real-cell">${acts}</div><div class="bitacora-cell ia-cell"><label style="cursor:pointer; display:flex; gap:6px;"><input type="checkbox" class="check-cumplido" data-fecha="${fecha}" ${checked}><span>${data.resumenIA || 'Libre'}</span></label></div></div>`;
+        htmlRPE += `<div class="bloque-entrenamiento sensacion-card"><div class="sensacion-header"><h4 class="sensacion-titulo">${fecha}</h4><span class="sensacion-resumen">${acts}</span></div><div class="sensacion-sliders"><div><div class="slider-row"><label class="slider-label">ESFUERZO (RPE)</label><span id="val-rpe-${fecha}" class="slider-val rpe-val">${data.rpe}/10</span></div><input type="range" min="1" max="10" value="${data.rpe}" class="slider-sensacion" data-tipo="rpe" data-fecha="${fecha}"></div><div><div class="slider-row"><label class="slider-label">DOLOR</label><span id="val-dolor-${fecha}" class="slider-val dolor-val">${data.dolor}/10</span></div><input type="range" min="1" max="10" value="${data.dolor}" class="slider-sensacion" data-tipo="dolor" data-fecha="${fecha}"></div></div><textarea class="textarea-comentario" data-fecha="${fecha}" placeholder="Notas médicas...">${data.comentario}</textarea></div>`;
     });
 
     document.getElementById('bitacora-list').innerHTML = htmlGrid;
     document.getElementById('sensaciones-list').innerHTML = htmlRPE;
 
-    document.querySelectorAll('.slider-sensacion').forEach(s => {
-        s.addEventListener('input', e => document.getElementById(`val-${e.target.dataset.tipo}-${e.target.dataset.fecha}`).textContent = e.target.value + '/10');
-        s.addEventListener('change', e => guardarEstadoBitacora(e.target.dataset.fecha));
-    });
-    document.querySelectorAll('.textarea-comentario, .check-cumplido').forEach(el => {
-        el.addEventListener('change', e => guardarEstadoBitacora(e.target.dataset.fecha));
-    });
+    document.querySelectorAll('.slider-sensacion').forEach(s => { s.addEventListener('input', e => document.getElementById(`val-${e.target.dataset.tipo}-${e.target.dataset.fecha}`).textContent = e.target.value + '/10'); s.addEventListener('change', e => guardarEstadoBitacora(e.target.dataset.fecha)); });
+    document.querySelectorAll('.textarea-comentario, .check-cumplido').forEach(el => el.addEventListener('change', e => guardarEstadoBitacora(e.target.dataset.fecha)));
 }
 
 async function guardarEstadoBitacora(fecha) {
     const existing = await DB.get('bitacora', fecha) || { fecha };
     const check = document.querySelector(`.check-cumplido[data-fecha="${fecha}"]`);
-    const rpe = document.querySelector(`.slider-sensacion[data-tipo="rpe"][data-fecha="${fecha}"]`);
-    const dolor = document.querySelector(`.slider-sensacion[data-tipo="dolor"][data-fecha="${fecha}"]`);
-    const nota = document.querySelector(`.textarea-comentario[data-fecha="${fecha}"]`);
-
     if(check) existing.cumplido = check.checked;
-    if(rpe) existing.rpe = parseInt(rpe.value);
-    if(dolor) existing.dolor = parseInt(dolor.value);
-    if(nota) existing.comentario = nota.value;
-
+    existing.rpe = parseInt(document.querySelector(`.slider-sensacion[data-tipo="rpe"][data-fecha="${fecha}"]`)?.value || 5);
+    existing.dolor = parseInt(document.querySelector(`.slider-sensacion[data-tipo="dolor"][data-fecha="${fecha}"]`)?.value || 1);
+    existing.comentario = document.querySelector(`.textarea-comentario[data-fecha="${fecha}"]`)?.value || '';
     await DB.put('bitacora', existing);
+    
+    // Si marcamos el checkbox, repintamos la barra de progreso sin recargar la página
+    if(check) {
+        const bitacoraData = await DB.getAll('bitacora');
+        const hoy = new Date(); const hace14 = new Date(hoy); hace14.setDate(hoy.getDate() - 14);
+        const strHace14 = hace14.toISOString().split('T')[0];
+        const cumplidos = bitacoraData.filter(b => b.cumplido && b.fecha >= strHace14).length;
+        const pct = Math.min(100, Math.round((cumplidos / 14) * 100));
+        document.getElementById('val-pct-plan').textContent = `${pct}%`;
+        document.querySelector('.progress-bar-fill').style.width = `${pct}%`;
+    }
 }
 
 // ============================================================================
-// 4. INTELIGENCIA ARTIFICIAL (Gemini Texto & VISIÓN)
+// 5. INTELIGENCIA ARTIFICIAL (Gemini Texto & VISIÓN) + BMR
 // ============================================================================
 async function llamarGemini(prompt, imagenes = []) {
     const config = await DB.get('config', 'credenciales');
@@ -304,15 +300,22 @@ async function llamarGemini(prompt, imagenes = []) {
     const parts = [{ text: prompt }];
     imagenes.forEach(img => parts.push({ inline_data: { mime_type: img.mimeType, data: img.base64 } }));
 
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts }] }) });
-    if (!res.ok) throw new Error(`Error API Gemini: ${res.status}`);
-    const json = await res.json();
-    return json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    let ultimoError;
+    for (let intento = 0; intento < 3; intento++) {
+        if (intento > 0) { console.warn('Reintento IA...'); await new Promise(r => setTimeout(r, Math.pow(2, intento) * 1000)); }
+        try {
+            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts }] }) });
+            if (res.status === 429 || res.status >= 500) { ultimoError = new Error(`Error API: ${res.status}`); continue; }
+            if (!res.ok) throw new Error(`Error API: ${res.status}`);
+            const json = await res.json();
+            return json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        } catch (err) { ultimoError = err; if (!err.message.includes('503') && !err.message.includes('429')) throw err; }
+    }
+    throw new Error('Servidores IA saturados. Inténtalo en un minuto.');
 }
 
 function extraerEtiqueta(texto, tag) {
-    const ETIQUETAS = 'RESUMEN_CORTO|ANALISIS_RETROSPECTIVO|ANALISIS_PRESCRIPCION|CALENTAMIENTO|PRINCIPAL|ENFRIAMIENTO|TIPO_DIETA|MACRO_CARBOS|MACRO_PROTES|MACRO_GRASAS|CONSEJO_NUTRICIONAL|KCAL_ESTIMADAS|MACROS|EVALUACION_OBJETIVA|RECOMENDACION_MEJORA';
-    const match = texto.match(new RegExp(`\\[${tag}\\]([\\s\\S]*?)(?=\\[(?:${ETIQUETAS})\\]|$)`));
+    const match = texto.match(new RegExp(`\\[${tag}\\]([\\s\\S]*?)(?=\\[(?:RESUMEN_CORTO|ANALISIS_PRESCRIPCION|CALENTAMIENTO|PRINCIPAL|ENFRIAMIENTO|TIPO_DIETA|MACRO_CARBOS|MACRO_PROTES|MACRO_GRASAS|CONSEJO_NUTRICIONAL|KCAL_ESTIMADAS|MACROS|EVALUACION_OBJETIVA|RECOMENDACION_MEJORA)\\]|$)`));
     return match ? match[1].trim() : '---';
 }
 
@@ -327,33 +330,32 @@ async function solicitarEntrenamientoIA() {
     try {
         const config = await DB.get('config', 'credenciales');
         const nombreAtleta = config?.nombre || 'Atleta';
+        const memoria = config?.meta || 'Preparación base';
         const lesiones = document.getElementById('texto-lesiones').value || 'Ninguna lesión activa.';
-        const hrvActual = document.getElementById('ticker-hrv').textContent;
-        const formActual = document.getElementById('val-fatiga').innerText;
+        const intencionHoy = document.getElementById('input-intencion-hoy').value.trim();
+        
+        const bloqueIntencion = intencionHoy ? `\n=== PREFERENCIA DEL ATLETA PARA HOY ===\nEl atleta ha expresado este deseo: "${intencionHoy}". ADAPTA la sesión a esto si es fisiológicamente seguro.\n` : '';
 
-        const prompt = `Eres A.R.G.O.S., inteligencia artificial deportiva para ${nombreAtleta}. Tu tono es profesional y científico.
-        
+        const prompt = `Eres A.R.G.O.S., IA deportiva para ${nombreAtleta}.
+        === OBJETIVO PRINCIPAL ===
+        "${memoria}"
         === ESTADO MÉDICO Y LESIONES ===
-        "${lesiones}" (EVITA prescribir ejercicios que impacten zonas lesionadas).
-        
-        === SITUACIÓN FISIOLÓGICA HOY ===
-        HRV: ${hrvActual}
-        Fatiga: ${formActual}
-        
-        Diseña la sesión de hoy integrada en la periodización.
-        Estructura exactamente con estas etiquetas:
-        [RESUMEN_CORTO] -> Resumen en 10 palabras.
-        [ANALISIS_PRESCRIPCION] -> Explicación técnica de la sesión.
+        "${lesiones}" (EVITA zonas lesionadas).
+        === SITUACIÓN HOY ===
+        HRV: ${document.getElementById('ticker-hrv').textContent}
+        Fatiga: ${document.getElementById('val-fatiga').innerText}
+        ${bloqueIntencion}
+        Diseña la sesión de hoy. Usa estas etiquetas:
+        [RESUMEN_CORTO] -> 10 palabras.
+        [ANALISIS_PRESCRIPCION] -> Explicación.
         [CALENTAMIENTO] -> Activación.
-        [PRINCIPAL] -> Núcleo de la sesión.
-        [ENFRIAMIENTO] -> Vuelta a la calma.
-        [CONSEJO_NUTRICIONAL] -> Pautas para afrontar el día.`;
+        [PRINCIPAL] -> Núcleo.
+        [ENFRIAMIENTO] -> Calma.
+        [CONSEJO_NUTRICIONAL] -> Pautas para el día.`;
 
         const respuestaIA = await llamarGemini(prompt);
 
-        const analisis = extraerEtiqueta(respuestaIA, 'ANALISIS_PRESCRIPCION');
-        containerAnalisis.innerHTML = `<p>${analisis}</p>`;
-        
+        containerAnalisis.innerHTML = `<p>${extraerEtiqueta(respuestaIA, 'ANALISIS_PRESCRIPCION')}</p>`;
         containerSesion.innerHTML = `
             <div class="seccion-ruta"><div class="tag-ruta">Calentamiento</div>${extraerEtiqueta(respuestaIA, 'CALENTAMIENTO')}</div>
             <div class="seccion-ruta"><div class="tag-ruta">Principal</div>${extraerEtiqueta(respuestaIA, 'PRINCIPAL')}</div>
@@ -361,7 +363,6 @@ async function solicitarEntrenamientoIA() {
         `;
         document.getElementById('val-nutricion-consejo').textContent = extraerEtiqueta(respuestaIA, 'CONSEJO_NUTRICIONAL');
 
-        // Guardar resumen en bitácora local
         const fechaHoy = new Date().toISOString().split('T')[0];
         const existing = await DB.get('bitacora', fechaHoy) || { fecha: fechaHoy };
         existing.resumenIA = extraerEtiqueta(respuestaIA, 'RESUMEN_CORTO');
@@ -373,42 +374,71 @@ async function solicitarEntrenamientoIA() {
     }
 }
 
-let imagenesComida = [];
+// BMR y Nutrición Vision
+function actualizarMetabolismo() {
+    const genero = document.getElementById('calc-genero')?.value || 'M';
+    const edad = parseInt(document.getElementById('calc-edad')?.value) || 30;
+    const peso = parseFloat(document.getElementById('calc-peso')?.value) || 75;
+    const altura = parseInt(document.getElementById('calc-altura')?.value) || 175;
+    
+    let bmr = (10 * peso) + (6.25 * altura) - (5 * edad);
+    bmr += (genero === 'M') ? 5 : -161;
+    window.bmrCalculado = Math.round(bmr);
+    
+    const resBmr = document.getElementById('res-bmr'); const resTdee = document.getElementById('res-tdee');
+    if (resBmr) resBmr.textContent = window.bmrCalculado + " kcal";
+    if (resTdee) resTdee.textContent = Math.round(window.bmrCalculado * 1.2) + " kcal";
 
-const comprimirImagen = (file) => new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = e => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const MAX_SIZE = 800; let w = img.width, h = img.height;
-            if(w > h && w > MAX_SIZE) { h *= MAX_SIZE/w; w = MAX_SIZE; } else if(h > MAX_SIZE) { w *= MAX_SIZE/h; h = MAX_SIZE; }
-            canvas.width = w; canvas.height = h;
-            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-            resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg', dataUrl });
-        };
-        img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-});
+    localStorage.setItem('argos_metabolismo', JSON.stringify({genero, edad, peso, altura}));
+}
 
-function inicializarEscaner() {
+function inicializarEscanerNutricional() {
+    const meta = JSON.parse(localStorage.getItem('argos_metabolismo'));
+    if(meta) {
+        if(document.getElementById('calc-genero')) document.getElementById('calc-genero').value = meta.genero;
+        if(document.getElementById('calc-edad')) document.getElementById('calc-edad').value = meta.edad;
+        if(document.getElementById('calc-peso')) document.getElementById('calc-peso').value = meta.peso;
+        if(document.getElementById('calc-altura')) document.getElementById('calc-altura').value = meta.altura;
+    }
+    ['input', 'change'].forEach(evt => {
+        document.getElementById('calc-genero')?.addEventListener(evt, actualizarMetabolismo);
+        document.getElementById('calc-edad')?.addEventListener(evt, actualizarMetabolismo);
+        document.getElementById('calc-peso')?.addEventListener(evt, actualizarMetabolismo);
+        document.getElementById('calc-altura')?.addEventListener(evt, actualizarMetabolismo);
+    });
+    actualizarMetabolismo();
+
+    let imagenesComida = [];
     ['entrante', 'primero', 'segundo', 'postre'].forEach(fase => {
         const inputF = document.getElementById(`input-foto-${fase}`);
         if(inputF) {
             inputF.addEventListener('change', async (e) => {
                 const file = e.target.files[0];
                 if(file) {
-                    const res = await comprimirImagen(file);
-                    document.getElementById(`preview-img-${fase}`).src = res.dataUrl;
-                    document.getElementById(`preview-img-${fase}`).style.display = 'block';
-                    
-                    const idx = imagenesComida.findIndex(img => img.fase === fase);
-                    if(idx > -1) imagenesComida[idx] = { fase, base64: res.base64, mimeType: res.mimeType };
-                    else imagenesComida.push({ fase, base64: res.base64, mimeType: res.mimeType });
-                    
-                    document.getElementById('btn-analizar').disabled = imagenesComida.length === 0;
+                    const reader = new FileReader();
+                    reader.onload = e2 => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let w = img.width, h = img.height;
+                            if(w > h && w > 800) { h *= 800/w; w = 800; } else if(h > 800) { w *= 800/h; h = 800; }
+                            canvas.width = w; canvas.height = h;
+                            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                            const base64 = dataUrl.split(',')[1];
+                            
+                            document.getElementById(`preview-img-${fase}`).src = dataUrl;
+                            document.getElementById(`preview-img-${fase}`).style.display = 'block';
+                            
+                            const idx = imagenesComida.findIndex(i => i.fase === fase);
+                            if(idx > -1) imagenesComida[idx] = { fase, base64, mimeType: 'image/jpeg' };
+                            else imagenesComida.push({ fase, base64, mimeType: 'image/jpeg' });
+                            
+                            document.getElementById('btn-analizar').disabled = imagenesComida.length === 0;
+                        };
+                        img.src = e2.target.result;
+                    };
+                    reader.readAsDataURL(file);
                 }
             });
         }
@@ -422,7 +452,7 @@ function inicializarEscaner() {
         try {
             const dieta = document.getElementById('selector-dieta').value;
             const notas = document.getElementById('texto-notas-comida').value;
-            const gastoTotal = (window.bmrCalculado || 0) + 500;
+            const gastoTotal = (window.bmrCalculado || 0) + (window.avgCaloriasActivas || 500);
 
             const prompt = `Eres A.R.G.O.S., inteligencia nutricional. Estrategia: ${dieta}. TDEE: ${gastoTotal} kcal/día. Notas: "${notas}". Analiza las imágenes adjuntas.
             Usa estas etiquetas:
@@ -442,17 +472,13 @@ function inicializarEscaner() {
 
             document.getElementById('loading-overlay').style.display = 'none';
             document.getElementById('resultados-analisis').style.display = 'block';
-        } catch (err) {
-            alert('Error de Visión IA: ' + err.message);
-            document.getElementById('loading-overlay').style.display = 'none';
-        } finally {
-            btn.disabled = false;
-        }
+        } catch (err) { alert('Error IA: ' + err.message); document.getElementById('loading-overlay').style.display = 'none'; } 
+        finally { btn.disabled = false; }
     });
 }
 
 // ============================================================================
-// 5. INICIALIZACIÓN GLOBAL
+// 6. INICIALIZACIÓN GLOBAL Y TEMA
 // ============================================================================
 document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('header-fecha').textContent = new Date().toISOString().split('T')[0];
@@ -460,13 +486,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         await initDB();
         await cargarConfiguracion();
-        inicializarEscaner();
+        inicializarEscanerNutricional();
         
         document.getElementById('btn-guardar-config').addEventListener('click', guardarConfiguracion);
         document.getElementById('btn-exportar').addEventListener('click', exportarRespaldo);
         document.getElementById('input-importar').addEventListener('change', importarRespaldo);
         
-        // Arrancar telemetría y UI si hay claves
         const config = await DB.get('config', 'credenciales');
         if (config && config.intervalsKey) {
             const datos = await fetchIntervalsData();
@@ -474,78 +499,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             await renderBitacoraYRPE(datos.activities);
         }
 
-        // Inyectar botón de Inteligencia Artificial si hay clave
         if (config && config.geminiKey) {
-            document.getElementById('contenedor-sesion-prescrita').innerHTML = `
-                <button id="btn-generar-ia" class="file-upload-btn" style="width:100%; padding:15px; margin-top:10px; font-size:14px; background:var(--primary); color:#fff;">
-                    ⚡ SOLICITAR ENTRENAMIENTO DE HOY
-                </button>
-            `;
+            document.getElementById('contenedor-sesion-prescrita').innerHTML = `<button id="btn-generar-ia" class="file-upload-btn" style="width:100%; padding:15px; margin-top:10px; font-size:14px; background:var(--primary); color:#fff;">⚡ SOLICITAR ENTRENAMIENTO DE HOY</button>`;
             document.getElementById('btn-generar-ia').addEventListener('click', solicitarEntrenamientoIA);
-            document.getElementById('contenedor-analisis-ia').innerHTML = '<p style="color:#888; font-style:italic;">Sistema IA en reposo. Esperando solicitud manual.</p>';
         }
 
-    } catch (e) {
-        console.error(e);
-        alert("Fallo crítico. Asegúrate de no estar en navegación privada.");
-    }
+    } catch (e) { alert("Fallo crítico en el almacenamiento. Usa el navegador normal."); }
 });
 
-// ============================================================================
-// 6. CONTROL DE TEMA VISUAL (Color Picker)
-// ============================================================================
 const colorPicker = document.getElementById('theme-color-picker');
-
-function hexToRgb(hex) { 
-    let r=0, g=0, b=0; 
-    if(hex.length === 4) { r = parseInt(hex[1]+hex[1], 16); g = parseInt(hex[2]+hex[2], 16); b = parseInt(hex[3]+hex[3], 16); } 
-    else if(hex.length === 7) { r = parseInt(hex.substring(1,3), 16); g = parseInt(hex.substring(3,5), 16); b = parseInt(hex.substring(5,7), 16); } 
-    return `${r}, ${g}, ${b}`; 
-}
-
-function adjustColor(hex, amount) { 
-    let color = hex.replace('#', ''); 
-    if (color.length === 3) color = color[0]+color[0]+color[1]+color[1]+color[2]+color[2]; 
-    let r = Math.max(0, Math.min(255, parseInt(color.substring(0, 2), 16) + amount)); 
-    let g = Math.max(0, Math.min(255, parseInt(color.substring(2, 4), 16) + amount)); 
-    let b = Math.max(0, Math.min(255, parseInt(color.substring(4, 6), 16) + amount)); 
-    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`; 
-}
-
 function setThemeColor(hex) { 
-    const root = document.documentElement; 
-    const rgb = hexToRgb(hex); 
+    const r=parseInt(hex.substr(1,2),16), g=parseInt(hex.substr(3,2),16), b=parseInt(hex.substr(5,2),16);
+    document.documentElement.style.setProperty('--primary', hex); 
+    document.documentElement.style.setProperty('--primary-hover', `#${Math.max(0,r-30).toString(16).padStart(2,'0')}${Math.max(0,g-30).toString(16).padStart(2,'0')}${Math.max(0,b-30).toString(16).padStart(2,'0')}`);
+    document.documentElement.style.setProperty('--primary-dark', `#${Math.max(0,r-80).toString(16).padStart(2,'0')}${Math.max(0,g-80).toString(16).padStart(2,'0')}${Math.max(0,b-80).toString(16).padStart(2,'0')}`);
+    document.documentElement.style.setProperty('--primary-rgb', `${r},${g},${b}`); 
+    localStorage.setItem('argos_theme_color', hex); if (colorPicker) colorPicker.value = hex; 
     
-    root.style.setProperty('--primary', hex); 
-    root.style.setProperty('--primary-hover', adjustColor(hex, 40)); 
-    root.style.setProperty('--primary-dark', adjustColor(hex, -80)); 
-    root.style.setProperty('--primary-rgb', rgb); 
-    
-    localStorage.setItem('argos_theme_color', hex); 
-    if (colorPicker) colorPicker.value = hex; 
-    
-    if (typeof Chart !== 'undefined') {
-        Chart.instances.forEach(chart => { 
-            let updated = false; 
-            chart.data.datasets.forEach(ds => { 
-                if (ds._isPrimaryTheme || ds.borderColor === '#ff2a2a' || ds.borderColor === 'var(--primary)') { 
-                    ds._isPrimaryTheme = true; 
-                    ds.borderColor = hex; 
-                    ds.backgroundColor = ds.type === 'bar' ? `rgba(${rgb}, 0.3)` : `rgba(${rgb}, 0.1)`; 
-                    updated = true; 
-                } 
-            }); 
-            if (updated) { 
-                chart.options.plugins.tooltip.borderColor = hex; 
-                chart.options.plugins.tooltip.titleColor = hex; 
-                chart.update(); 
-            } 
-        }); 
-    }
+    if (typeof Chart !== 'undefined') Chart.instances.forEach(chart => { 
+        let upd=false; chart.data.datasets.forEach(ds => { if (ds._isPri || ds.borderColor==='#ff2a2a' || ds.borderColor==='var(--primary)') { ds._isPri=true; ds.borderColor=hex; ds.backgroundColor=ds.type==='bar'?`rgba(${r},${g},${b},0.3)`:`rgba(${r},${g},${b},0.1)`; upd=true; } }); 
+        if (upd) chart.update(); 
+    }); 
 }
-
 if (colorPicker) colorPicker.addEventListener('input', (e) => setThemeColor(e.target.value));
-
-const savedThemeColor = localStorage.getItem('argos_theme_color');
-if (savedThemeColor) setTimeout(() => setThemeColor(savedThemeColor), 100); 
-else setTimeout(() => setThemeColor('#ff2a2a'), 100);
+const savedColor = localStorage.getItem('argos_theme_color');
+if (savedColor) setTimeout(() => setThemeColor(savedColor), 100); else setTimeout(() => setThemeColor('#ff2a2a'), 100);
