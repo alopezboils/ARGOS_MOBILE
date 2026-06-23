@@ -106,6 +106,21 @@
         .miniatura-foto { display: none; width: 100%; height: 80px; object-fit: cover; border: 1px solid #333; margin-top: 8px; border-radius: 2px; }
         .config-box { background: #0a0a0a; border: 1px solid #222; padding: 15px; margin-bottom: 20px; }
         .config-box h4 { color: var(--primary); margin-top: 0; margin-bottom: 10px; letter-spacing: 1px; text-transform: uppercase; }
+        
+        /* --- ADAPTACIÓN TÁCTICA PARA PANTALLAS MÓVILES --- */
+        @media (max-width: 850px) {
+            .grid-avanzado { grid-template-columns: 1fr 1fr; gap: 10px; }
+            .grid-resumen { grid-template-columns: 1fr; }
+            .grid-charts { grid-template-columns: 1fr; }
+            .panel-inferior { display: flex; flex-direction: column; gap: 15px; }
+            .tabs { flex-wrap: wrap; }
+            .tab-btn { flex: 1 1 45%; font-size: 10px; padding: 10px 5px; text-align: center; }
+            .header h1 { font-size: 28px; }
+            .cuadrante-fotos { grid-template-columns: 1fr; }
+            body { padding: 10px; }
+            .bitacora-row { grid-template-columns: 42px 1fr 80px; }
+            .bitacora-header { grid-template-columns: 42px 1fr 80px; }
+        }
     </style>
 </head>
 <body>
@@ -309,7 +324,6 @@
     </div>
 </div>
 
-<!-- Lógica básica de navegación (Front-Only) -->
 <script>
     function openTab(tabId) { 
         document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); 
@@ -318,7 +332,6 @@
         document.querySelector(`[onclick="openTab('${tabId}')"]`).classList.add('active'); 
     }
 
-    // Registro del Service Worker para funcionamiento Offline
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
@@ -327,7 +340,6 @@
         });
     }
 </script>
-<!-- Enlace al motor de lógica e IndexedDB -->
 <script src="./app.js"></script>
 </body>
 </html>
