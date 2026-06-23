@@ -4,11 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>A.R.G.O.S. | Panel de Rendimiento</title>
-    <!-- Configuración para PWA -->
     <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#ff2a2a">
     
-    <!-- Scripts Externos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <style>
@@ -142,7 +140,6 @@
         <button class="tab-btn"        onclick="openTab('tab-config')">Configuración</button>
     </div>
 
-    <!-- PESTAÑA: PANEL PRINCIPAL -->
     <div id="tab-mando" class="tab-content active">
         <div class="grid-avanzado">
             <div class="card-avanzada"><div class="card-title-avz">Disposición Fisiológica</div><div class="card-desc-avz" id="val-intensidad">Calculando...</div></div>
@@ -151,7 +148,6 @@
             <div class="card-avanzada"><div class="card-title-avz">Motor Cardiovascular</div><div class="ticker-container"><div class="ticker-item"><div class="ticker-label">HRV</div><div id="ticker-hrv">--</div></div><div class="ticker-item"><div class="ticker-label">RHR</div><div id="ticker-rhr">--</div></div></div></div>
         </div>
         <div class="grid-resumen">
-            <!-- Contenedores dinámicos para las semanas calculadas por JS -->
             <div id="container-sem-anterior"></div>
             <div id="container-sem-actual"></div>
             <div class="box-summary"><div class="box-val" id="card-hrv-val">-- ms</div><div class="box-lbl">HRV Actual</div></div>
@@ -164,10 +160,7 @@
         <div class="panel-inferior">
             <div class="bloque-historial">
                 <h3 style="color:var(--primary); border-color:var(--primary-dark);">Historial de Entrenamientos</h3>
-                <div class="bitacora-grid" id="bitacora-list">
-                    <div class="bitacora-header"><div>Día</div><div>Completado</div><div>Prescripción</div></div>
-                    <!-- Se rellena dinámicamente -->
-                </div>
+                <div class="bitacora-grid" id="bitacora-list"></div>
             </div>
             <div class="bloque-obiwan">
                 <h3>Análisis del Entrenador</h3>
@@ -176,15 +169,16 @@
                 </div>
             </div>
             <div class="bloque-entrenamiento">
-                <h3 style="color:#fff;">Sesión Prescrita</h3>
-                <div id="contenedor-sesion-prescrita">
-                    <!-- Botón o bloques de entrenamiento inyectados por JS -->
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #222; padding-bottom: 8px; margin: 0 0 12px;">
+                    <h3 style="color:#fff; border:none; padding:0; margin:0;">Sesión Prescrita</h3>
                 </div>
+                <input type="text" id="input-intencion-hoy" placeholder="Intención de hoy (Ej: Correr 10km suave)" style="width:100%; background:#0a0a0a; border:1px solid #333; color:#ff8800; padding:10px; font-family:'Consolas', monospace; font-size:13px; margin-bottom:12px;" title="Si lo dejas en blanco, A.R.G.O.S. diseñará la sesión automáticamente.">
+                
+                <div id="contenedor-sesion-prescrita"></div>
             </div>
         </div>
     </div>
     
-    <!-- PESTAÑA: AUDITORÍA NUTRICIONAL -->
     <div id="tab-nutricion" class="tab-content">
         <div class="bloque-nutricion" style="margin-bottom: 20px;">
             <h3 style="color:#fff;">Perfil Metabólico (Ecuación Mifflin-St Jeor)</h3>
@@ -201,7 +195,7 @@
         </div>
 
         <div class="grid-resumen" style="grid-template-columns: 1fr 1fr;">
-            <div class="box-summary" style="border-color:#ff8800;"><div class="box-val" style="color:#ff8800" id="val-gasto-promedio">0 kcal</div><div class="box-lbl">Referencia: Gasto Activo Promedio</div></div>
+            <div class="box-summary" style="border-color:#ff8800;"><div class="box-val" style="color:#ff8800" id="val-gasto-promedio">0 kcal</div><div class="box-lbl">Gasto Activo Promedio (Reloj)</div></div>
             <div class="box-summary"><div class="box-val" style="color:#fff">El Plato del Atleta</div><div class="box-lbl">Guía Visual Estándar</div></div>
         </div>
         
@@ -256,16 +250,6 @@
                     <div style="font-family:'Consolas', monospace; color:#888; text-transform:uppercase; letter-spacing:1px; font-size:12px; margin-top:20px; margin-bottom:8px;">Evaluación Objetiva</div><div id="res-evaluacion" class="seccion-ruta" style="border-left-color:var(--primary); color:#ddd;">---</div>
                     <div style="font-family:'Consolas', monospace; color:#888; text-transform:uppercase; letter-spacing:1px; font-size:12px; margin-top:20px; margin-bottom:8px;">Recomendación de Ajuste</div><div id="res-recomendacion" class="seccion-ruta" style="border-left-color:#56d364; background:#051005; color:#ddd;">---</div>
                 </div>
-                <div id="guia-plato">
-                    <div class="plate-container">
-                        <div class="plate-title" id="plato-nombre" style="color:var(--primary)">DÍA EN CÁLCULO</div>
-                        <div class="plate-stats">
-                            <div class="plate-stat"><div class="plate-stat-val" style="color:#e3c57a" id="plato-granos">--%</div><div class="plate-stat-lbl">Granos</div></div>
-                            <div class="plate-stat"><div class="plate-stat-val" style="color:#8fb3c2" id="plato-vegetales">--%</div><div class="plate-stat-lbl">Vegetales</div></div>
-                            <div class="plate-stat"><div class="plate-stat-val" style="color:var(--primary);" id="plato-proteina">--%</div><div class="plate-stat-lbl">Proteína</div></div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
         <div class="bloque-entrenamiento bloque-consejo" style="margin-top:20px; border-color:#331100;">
@@ -274,7 +258,6 @@
         </div>
     </div>
     
-    <!-- PESTAÑA: REGISTRO MÉDICO -->
     <div id="tab-sensaciones" class="tab-content">
         <div style="max-width:820px; margin:0 auto;">
             <div class="panel-lesiones">
@@ -283,18 +266,23 @@
                 <textarea id="texto-lesiones" class="textarea-lesiones" rows="3" placeholder="Ej: Molestia en rodilla derecha."></textarea>
             </div>
             <h2 style="color:#fff; font-size:16px; border-bottom:1px solid #222; padding-bottom:10px; margin-bottom:20px; text-transform:uppercase; letter-spacing:2px;">Historial de Desgaste (RPE)</h2>
-            <div id="sensaciones-list">
-                <!-- Tarjetas de sliders inyectadas por JS -->
-            </div>
+            <div id="sensaciones-list"></div>
         </div>
     </div>
 
-    <!-- PESTAÑA NUEVA: CONFIGURACIÓN LOCAL TÁCTICA -->
     <div id="tab-config" class="tab-content">
         <div style="max-width:820px; margin:0 auto;">
             <div class="config-box">
+                <h4>Datos del Atleta y Configuración</h4>
+                
+                <label class="slider-label">Nombre del Atleta</label>
+                <input type="text" id="cfg-nombre-atleta" class="select-dieta" value="Atleta">
+
+                <label class="slider-label">Meta o Periodización Principal</label>
+                <input type="text" id="cfg-meta-principal" class="select-dieta" placeholder="Ej: Preparación Maratón 4h" style="border-color:var(--primary); font-weight:bold;">
+
                 <h4>Credenciales de Telemetría (Local-First)</h4>
-                <p style="font-size:12px; color:#888; margin-top:0;">Estas claves se guardan de forma segura y cifrada dentro del almacenamiento local del navegador de tu teléfono móvil.</p>
+                <p style="font-size:12px; color:#888; margin-top:0;">Estas claves se guardan de forma segura y cifrada dentro del móvil.</p>
                 
                 <label class="slider-label">ID de Atleta (Intervals.icu)</label>
                 <input type="text" id="cfg-athlete-id" class="select-dieta" placeholder="Ej: i12345">
@@ -305,15 +293,12 @@
                 <label class="slider-label">Clave API de Gemini (Google AI)</label>
                 <input type="password" id="cfg-gemini-key" class="select-dieta" placeholder="AI_KEY para los análisis tácticos">
 
-                <label class="slider-label">Nombre del Atleta</label>
-                <input type="text" id="cfg-nombre-atleta" class="select-dieta" value="Atleta">
-
                 <button id="btn-guardar-config" class="file-upload-btn" style="width:100%; margin-top:10px; padding:12px;">💾 GUARDAR CONFIGURACIÓN</button>
             </div>
             
             <div class="config-box" style="border-color: #333;">
                 <h4>Capa de Seguridad de Datos</h4>
-                <p style="font-size:12px; color:#888;">Recuerda que borrar la caché o los datos del navegador del móvil eliminará tu historial. Haz respaldos periódicos.</p>
+                <p style="font-size:12px; color:#888;">Recuerda que borrar la caché del navegador eliminará tu historial. Haz respaldos.</p>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                     <button id="btn-exportar" class="file-upload-btn" style="background:#222; color:#fff; margin:0;">📤 EXPORTAR RESPALDO (.JSON)</button>
                     <button id="btn-importar-trigger" class="file-upload-btn" style="background:#222; color:#fff; margin:0;" onclick="document.getElementById('input-importar').click()">📥 IMPORTAR RESPALDO</button>
